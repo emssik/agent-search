@@ -39,3 +39,4 @@ target/
 # Added by cargo
 
 /target
+.agent-search-index
