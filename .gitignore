@@ -34,3 +34,8 @@ dist/
 build/
 target/
 *.egg-info/
+
+
+# Added by cargo
+
+/target

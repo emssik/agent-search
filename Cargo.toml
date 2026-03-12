@@ -1,0 +1,18 @@
+[package]
+name = "agent-search"
+version = "0.3.0"
+edition = "2024"
+
+[dependencies]
+tantivy = "0.22"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tiktoken-rs = "0.6"
+ignore = "0.4"
+anyhow = "1"
+snowball_stemmers_rs = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
