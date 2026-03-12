@@ -1,5 +1,7 @@
 # agent-search
 
+> This project is published as part of [PIY — Prompt It Yourself](https://blog.atdpath.com/piy), a personal initiative launched on March 8, 2026, encouraging others to build their own apps with the help of LLMs.
+
 Vector-free search engine for AI agents. Indexes a corpus of text files and returns the most relevant fragments as JSON, ready to inject into an LLM context.
 
 Built on the **GrepRAG** architecture — lexical search with BM25 ranking, deduplication, and token budget truncation.
@@ -112,4 +114,4 @@ The index is updated incrementally based on a manifest (`manifest.json`) that st
 
 ## License
 
-MIT
+Commons Clause + MIT — see [LICENSE](LICENSE)
