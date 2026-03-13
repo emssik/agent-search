@@ -51,13 +51,13 @@ fn register_tokenizer(index: &Index) {
     index.tokenizers().register(TOKENIZER_NAME, tokenizer);
 }
 
-fn mtime_secs(metadata: &std::fs::Metadata) -> u64 {
+fn mtime_millis(metadata: &std::fs::Metadata) -> u64 {
     metadata
         .modified()
         .unwrap_or(SystemTime::UNIX_EPOCH)
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs()
+        .as_millis() as u64
 }
 
 fn load_manifest(index_path: &Path) -> Manifest {
@@ -112,14 +112,26 @@ fn index_file(
     Ok(true)
 }
 
-/// Scan corpus directory, return map of rel_path -> FileEntry for indexable files
-fn scan_corpus(corpus_path: &Path) -> HashMap<String, FileEntry> {
+/// Scan corpus directory, return map of rel_path -> FileEntry for indexable files.
+/// Excludes the index directory to prevent self-indexing.
+fn scan_corpus(corpus_path: &Path, index_path: &Path) -> HashMap<String, FileEntry> {
     let mut current = HashMap::new();
+    let index_canonical = index_path.canonicalize().ok();
     let walker = WalkBuilder::new(corpus_path)
         .hidden(true)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
+        .filter_entry(move |entry| {
+            if let Some(ref idx_canon) = index_canonical {
+                if let Ok(entry_canon) = entry.path().canonicalize() {
+                    if entry_canon.starts_with(idx_canon) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
         .build();
 
     for entry in walker.into_iter().filter_map(|e| e.ok()) {
@@ -145,7 +157,7 @@ fn scan_corpus(corpus_path: &Path) -> HashMap<String, FileEntry> {
         current.insert(
             rel_path,
             FileEntry {
-                mtime: mtime_secs(&metadata),
+                mtime: mtime_millis(&metadata),
                 size: metadata.len(),
             },
         );
@@ -175,7 +187,7 @@ pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
     let path_field = schema.get_field(FIELD_PATH).unwrap();
     let body_field = schema.get_field(FIELD_BODY).unwrap();
 
-    let current = scan_corpus(corpus_path);
+    let current = scan_corpus(corpus_path, index_path);
     let mut file_count = 0u64;
 
     for rel_path in current.keys() {
@@ -193,7 +205,7 @@ pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
 /// Incremental update: add new/changed, remove deleted
 pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, bool)> {
     let old_manifest = load_manifest(index_path);
-    let current = scan_corpus(corpus_path);
+    let current = scan_corpus(corpus_path, index_path);
 
     let mut to_add: Vec<&String> = Vec::new();
     let mut to_remove: Vec<&String> = Vec::new();

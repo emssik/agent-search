@@ -39,28 +39,60 @@ agent-search index -c /path/to/corpus --force
 ### Searching
 
 ```bash
-# Search with automatic index update
-agent-search search -c /path/to/corpus -q "authentication flow"
+# Default (chunks mode) — returns content fragments with context
+agent-search search -c ./corpus -q "authentication flow"
 
-# With index rebuild
-agent-search search -c /path/to/corpus -q "error handling" --reindex
+# Files mode — returns only file paths + scores (no content, minimal tokens)
+agent-search search -c ./corpus --mode files -q "Spring Security"
 
-# Custom parameters
-agent-search search -c /path/to/corpus -q "query" \
+# Summary mode — groups results by directory with file counts
+agent-search search -c ./corpus --mode summary -q "Docker"
+
+# Multi-query — searches for multiple terms, merges results
+agent-search search -c ./corpus -q "MockMvc" -q "TestRestTemplate"
+
+# Limit results
+agent-search search -c ./corpus --mode files -q "test" --max-results 5
+
+# Custom chunk parameters
+agent-search search -c ./corpus -q "query" \
   --context-lines 15 \
   --token-budget 8192
+
+# Rebuild index before searching
+agent-search search -c ./corpus -q "error handling" --reindex
+```
+
+### Output modes
+
+**`--mode chunks`** (default) — full content fragments with context lines, deduplication, and token budget truncation. Best for injecting into LLM context.
+
+**`--mode files`** — file paths and BM25 scores only. No content extraction. Use when you need to know *which* files are relevant without spending tokens on content.
+
+**`--mode summary`** — file matches grouped by parent directory with counts and top scores. Use to understand *where* in the codebase a topic lives.
+
+### Multi-query
+
+Pass multiple `-q` flags to search for several terms at once. Results are merged by file path (highest score wins for files/summary modes) or deduplicated by position (for chunks mode).
+
+```bash
+agent-search search -c ./corpus -q "authenticate" -q "authorize" --mode files
 ```
 
 ### Options
 
 | Flag | Default | Description |
 |---|---|---|
-| `--context-lines` | 10 | Lines of context around each hit |
-| `--token-budget` | 4096 | Maximum token count in output |
+| `--mode` | `chunks` | Output mode: `chunks`, `files`, or `summary` |
+| `--max-results` | 100 | Maximum number of results |
+| `--context-lines` | 10 | Lines of context around each hit (chunks mode) |
+| `--token-budget` | 4096 | Maximum token count in output (chunks mode) |
 | `--index-dir` | `<corpus>/.agent-search-index` | Index directory |
 | `--force` / `--reindex` | — | Force full index rebuild |
 
-### Output (JSON)
+### Output examples
+
+**Chunks mode** (default):
 
 ```json
 {
@@ -70,8 +102,7 @@ agent-search search -c /path/to/corpus -q "query" \
   "token_count": 1847,
   "sources": [
     "[1] src/auth.rs:15-42",
-    "[2] src/middleware.rs:88-103",
-    "[3] src/config.rs:1-20"
+    "[2] src/middleware.rs:88-103"
   ],
   "chunks": [
     {
@@ -81,6 +112,48 @@ agent-search search -c /path/to/corpus -q "query" \
       "end_line": 42,
       "content": "...",
       "score": 8.42
+    }
+  ]
+}
+```
+
+**Files mode**:
+
+```json
+{
+  "query": "authentication",
+  "total_files": 3,
+  "files": [
+    { "path": "src/auth.rs", "score": 8.42 },
+    { "path": "src/middleware.rs", "score": 5.11 },
+    { "path": "tests/auth_test.rs", "score": 3.87 }
+  ]
+}
+```
+
+**Summary mode**:
+
+```json
+{
+  "query": "authentication",
+  "total_files": 3,
+  "directories": [
+    {
+      "directory": "src",
+      "count": 2,
+      "top_score": 8.42,
+      "files": [
+        { "path": "src/auth.rs", "score": 8.42 },
+        { "path": "src/middleware.rs", "score": 5.11 }
+      ]
+    },
+    {
+      "directory": "tests",
+      "count": 1,
+      "top_score": 3.87,
+      "files": [
+        { "path": "tests/auth_test.rs", "score": 3.87 }
+      ]
     }
   ]
 }

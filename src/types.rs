@@ -19,3 +19,31 @@ pub struct SearchOutput {
     pub sources: Vec<String>,
     pub chunks: Vec<Chunk>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileMatch {
+    pub path: String,
+    pub score: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FilesOutput {
+    pub query: String,
+    pub total_files: usize,
+    pub files: Vec<FileMatch>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DirGroup {
+    pub directory: String,
+    pub count: usize,
+    pub top_score: f32,
+    pub files: Vec<FileMatch>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryOutput {
+    pub query: String,
+    pub total_files: usize,
+    pub directories: Vec<DirGroup>,
+}

@@ -6,10 +6,21 @@ mod truncate;
 mod types;
 
 use anyhow::{bail, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
-use types::SearchOutput;
+use types::{FilesOutput, SearchOutput, SummaryOutput};
+
+#[derive(Debug, Clone, Default, ValueEnum)]
+enum OutputMode {
+    /// Return content chunks (default)
+    #[default]
+    Chunks,
+    /// Return only file paths and scores
+    Files,
+    /// Return directory-grouped summary
+    Summary,
+}
 
 #[derive(Parser)]
 #[command(name = "agent-search", about = "GrepRAG lexical search agent")]
@@ -40,9 +51,9 @@ enum Commands {
         #[arg(short, long)]
         corpus: PathBuf,
 
-        /// Search query
-        #[arg(short, long)]
-        query: String,
+        /// Search query (can be specified multiple times for multi-query)
+        #[arg(short, long, num_args = 1..)]
+        query: Vec<String>,
 
         /// Lines of context around each match
         #[arg(long, default_value = "10")]
@@ -59,6 +70,14 @@ enum Commands {
         /// Rebuild index before searching
         #[arg(long)]
         reindex: bool,
+
+        /// Output mode: chunks (default), files, or summary
+        #[arg(long, value_enum, default_value = "chunks")]
+        mode: OutputMode,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        max_results: usize,
     },
 }
 
@@ -97,6 +116,8 @@ fn main() -> Result<()> {
             token_budget,
             index_dir,
             reindex,
+            mode,
+            max_results,
         } => {
             let idx_path = resolve_index_path(&corpus, &index_dir);
 
@@ -112,39 +133,72 @@ fn main() -> Result<()> {
                 index
             };
 
-            // Step 2+3: Search with BM25 ranking + context extraction
-            let chunks = search::search(&idx, &query, context_lines)?;
-            let total_candidates = chunks.len();
+            let query_display = query.join(" | ");
+            let query_refs: Vec<&str> = query.iter().map(|s| s.as_str()).collect();
 
-            // Step 4: Structure-aware deduplication
-            let merged = dedup::merge_chunks(chunks);
+            match mode {
+                OutputMode::Files => {
+                    let files = if query_refs.len() == 1 {
+                        search::search_files(&idx, query_refs[0], max_results)?
+                    } else {
+                        search::search_files_multi(&idx, &query_refs, max_results)?
+                    };
+                    let output = FilesOutput {
+                        query: query_display,
+                        total_files: files.len(),
+                        files,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                }
+                OutputMode::Summary => {
+                    let files = if query_refs.len() == 1 {
+                        search::search_files(&idx, query_refs[0], max_results)?
+                    } else {
+                        search::search_files_multi(&idx, &query_refs, max_results)?
+                    };
+                    let total_files = files.len();
+                    let directories = search::summarize_by_directory(files);
+                    let output = SummaryOutput {
+                        query: query_display,
+                        total_files,
+                        directories,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                }
+                OutputMode::Chunks => {
+                    let chunks = if query_refs.len() == 1 {
+                        search::search(&idx, query_refs[0], context_lines, max_results)?
+                    } else {
+                        search::search_multi(&idx, &query_refs, context_lines, max_results)?
+                    };
+                    let total_candidates = chunks.len();
 
-            // Step 5: Truncate to token budget
-            let (mut final_chunks, token_count) =
-                truncate::truncate_to_budget(merged, token_budget)?;
+                    let merged = dedup::merge_chunks(chunks);
+                    let (mut final_chunks, token_count) =
+                        truncate::truncate_to_budget(merged, token_budget)?;
 
-            // Assign source IDs and build references
-            let mut sources = Vec::new();
-            for (i, chunk) in final_chunks.iter_mut().enumerate() {
-                let id = format!("[{}]", i + 1);
-                let reference = format!(
-                    "{} {}:{}-{}",
-                    id, chunk.file_path, chunk.start_line, chunk.end_line
-                );
-                chunk.source_id = id;
-                sources.push(reference);
+                    let mut sources = Vec::new();
+                    for (i, chunk) in final_chunks.iter_mut().enumerate() {
+                        let id = format!("[{}]", i + 1);
+                        let reference = format!(
+                            "{} {}:{}-{}",
+                            id, chunk.file_path, chunk.start_line, chunk.end_line
+                        );
+                        chunk.source_id = id;
+                        sources.push(reference);
+                    }
+
+                    let output = SearchOutput {
+                        query: query_display,
+                        total_candidates,
+                        returned_chunks: final_chunks.len(),
+                        token_count,
+                        sources,
+                        chunks: final_chunks,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                }
             }
-
-            let output = SearchOutput {
-                query,
-                total_candidates,
-                returned_chunks: final_chunks.len(),
-                token_count,
-                sources,
-                chunks: final_chunks,
-            };
-
-            println!("{}", serde_json::to_string_pretty(&output)?);
         }
     }
 

@@ -22,14 +22,18 @@ pub fn merge_chunks(chunks: Vec<Chunk>) -> Vec<Chunk> {
 
         for chunk in file_chunks {
             if let Some(last) = merged.last_mut() {
-                // Merge if overlapping or gap <= 3 lines
-                if chunk.start_line <= last.end_line + 4 {
+                // Merge only if truly overlapping or directly adjacent (no gap).
+                // We cannot merge across gaps because we don't have the gap lines'
+                // content — that would create a mismatch between line range metadata
+                // and actual content.
+                if chunk.start_line <= last.end_line + 1 {
                     if chunk.end_line > last.end_line {
                         // Extend content: append only the new lines
+                        let overlap = last.end_line.saturating_sub(chunk.start_line.saturating_sub(1));
                         let new_lines: Vec<&str> = chunk
                             .content
                             .lines()
-                            .skip(last.end_line.saturating_sub(chunk.start_line - 1))
+                            .skip(overlap)
                             .collect();
                         if !new_lines.is_empty() {
                             last.content.push('\n');

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-13
+
+### Added
+- `--mode` flag with three output modes: `chunks` (default), `files` (paths + scores only), and `summary` (directory-grouped counts)
+- Multi-query support: pass multiple `-q` flags to search for several terms at once, results merged by relevance
+- `--max-results` flag to cap the number of results returned
+- `search_files` and `search_files_multi` functions for lightweight file-path-only retrieval
+- `summarize_by_directory` function grouping file matches by parent directory
+- `src/lib.rs` exposing public module API for library consumers
+- Integration test suite covering output modes and bug regression scenarios
+
+### Fixed
+- Chunk deduplication now merges only truly adjacent or overlapping fragments; gaps are preserved to prevent line-range metadata mismatches
+- Index directory excluded from corpus scan to prevent self-indexing
+- File modification time tracked at millisecond precision to detect rapid successive edits
+- Query term highlighting uses stemmed matching, consistent with the Tantivy analyzer pipeline
+
 ## [0.3.1] - 2026-03-12
 
 ### Added

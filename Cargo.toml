@@ -1,6 +1,6 @@
 [package]
 name = "agent-search"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
@@ -12,6 +12,9 @@ tiktoken-rs = "0.6"
 ignore = "0.4"
 anyhow = "1"
 snowball_stemmers_rs = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level = 3
