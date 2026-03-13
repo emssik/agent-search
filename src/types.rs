@@ -47,3 +47,11 @@ pub struct SummaryOutput {
     pub total_files: usize,
     pub directories: Vec<DirGroup>,
 }
+
+#[derive(Debug, Clone, Default)]
+pub enum SortOrder {
+    #[default]
+    Score,
+    Path,
+    Mtime,
+}

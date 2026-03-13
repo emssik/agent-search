@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-14
+
+### Added
+- `grep` subcommand: pure regex search over corpus files without requiring a search index
+- `--include` / `--exclude` glob pattern flags for path filtering in both `search` and `grep` subcommands
+- `--sort` flag (score/path/mtime) for ordering results in `files` and `summary` output modes
+- `--language` flag on the `index` subcommand to select the Snowball stemmer language (pl, en, de, fr, es, it, pt, ru, sv, nl, fi, da, hu, ro, tr, or none); defaults to `pl` for backward compatibility
+- Hybrid search mode: `--grep` regex filter applied on top of BM25 results in `search` subcommand
+- `src/filter.rs` glob-based path filtering module backed by `globset`
+
+### Changed
+- Stemmer is now configurable per index instead of being hardcoded to Polish; language choice is persisted in the index manifest
+- `search` and `grep` results in `files`/`summary` modes respect the `--sort` order before truncation
+
+### Fixed
+- Score threshold pre-filtering removed from chunk search; all candidates are ranked and truncated by `--max-results` after filtering, preventing premature result drops
+
 ## [0.4.0] - 2026-03-13
 
 ### Added

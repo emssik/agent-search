@@ -1,16 +1,17 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
+use snowball_stemmers_rs::Algorithm;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
 use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions};
 use tantivy::tokenizer::{LowerCaser, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
-use tantivy::{doc, Index, IndexWriter, Term};
+use tantivy::{Index, IndexWriter, Term, doc};
 
-use crate::stemmer::PolishStemmerFilter;
+use crate::stemmer::StemmerFilter;
 
-const MAX_FILE_SIZE: u64 = 1_048_576; // 1MB
+pub(crate) const MAX_FILE_SIZE: u64 = 1_048_576; // 1MB
 const TOKENIZER_NAME: &str = "pl_stem";
 const MANIFEST_FILE: &str = "manifest.json";
 const WRITER_HEAP: usize = 50_000_000; // 50MB
@@ -27,6 +28,8 @@ struct FileEntry {
 #[derive(Serialize, Deserialize, Default)]
 struct Manifest {
     files: HashMap<String, FileEntry>,
+    #[serde(default)]
+    language: Option<String>,
 }
 
 fn build_schema() -> Schema {
@@ -42,13 +45,24 @@ fn build_schema() -> Schema {
     builder.build()
 }
 
-fn register_tokenizer(index: &Index) {
-    let tokenizer = TextAnalyzer::builder(SimpleTokenizer::default())
-        .filter(RemoveLongFilter::limit(80))
-        .filter(LowerCaser)
-        .filter(PolishStemmerFilter)
-        .build();
-    index.tokenizers().register(TOKENIZER_NAME, tokenizer);
+fn register_tokenizer(index: &Index, algorithm: Option<Algorithm>) {
+    match algorithm {
+        Some(algo) => {
+            let tokenizer = TextAnalyzer::builder(SimpleTokenizer::default())
+                .filter(RemoveLongFilter::limit(80))
+                .filter(LowerCaser)
+                .filter(StemmerFilter::new(algo))
+                .build();
+            index.tokenizers().register(TOKENIZER_NAME, tokenizer);
+        }
+        None => {
+            let tokenizer = TextAnalyzer::builder(SimpleTokenizer::default())
+                .filter(RemoveLongFilter::limit(80))
+                .filter(LowerCaser)
+                .build();
+            index.tokenizers().register(TOKENIZER_NAME, tokenizer);
+        }
+    }
 }
 
 fn mtime_millis(metadata: &std::fs::Metadata) -> u64 {
@@ -75,21 +89,84 @@ fn save_manifest(index_path: &Path, manifest: &Manifest) -> Result<()> {
     Ok(())
 }
 
-fn is_binary_ext(path: &Path) -> bool {
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase());
+pub(crate) fn is_binary_ext(path: &Path) -> bool {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     matches!(
         ext.as_deref(),
         Some(
-            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico" | "svg" | "webp"
-                | "mp3" | "mp4" | "avi" | "mov" | "mkv" | "wav" | "flac"
-                | "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar"
-                | "exe" | "dll" | "so" | "dylib" | "o" | "a"
-                | "wasm" | "pdf" | "doc" | "docx" | "xls" | "xlsx"
-                | "bin" | "dat" | "db" | "sqlite"
+            "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "bmp"
+                | "ico"
+                | "svg"
+                | "webp"
+                | "mp3"
+                | "mp4"
+                | "avi"
+                | "mov"
+                | "mkv"
+                | "wav"
+                | "flac"
+                | "zip"
+                | "tar"
+                | "gz"
+                | "bz2"
+                | "xz"
+                | "7z"
+                | "rar"
+                | "exe"
+                | "dll"
+                | "so"
+                | "dylib"
+                | "o"
+                | "a"
+                | "wasm"
+                | "pdf"
+                | "doc"
+                | "docx"
+                | "xls"
+                | "xlsx"
+                | "bin"
+                | "dat"
+                | "db"
+                | "sqlite"
         )
     )
+}
+
+/// Resolve a language string to a stemmer algorithm.
+/// Returns Ok(Some(algo)) for known languages, Ok(None) for "none", Err for unknown.
+pub fn resolve_language(lang: &str) -> Result<Option<Algorithm>> {
+    match lang {
+        "pl" => Ok(Some(Algorithm::Polish)),
+        "en" => Ok(Some(Algorithm::English)),
+        "de" => Ok(Some(Algorithm::German)),
+        "fr" => Ok(Some(Algorithm::French)),
+        "es" => Ok(Some(Algorithm::Spanish)),
+        "it" => Ok(Some(Algorithm::Italian)),
+        "pt" => Ok(Some(Algorithm::Portuguese)),
+        "ru" => Ok(Some(Algorithm::Russian)),
+        "sv" => Ok(Some(Algorithm::Swedish)),
+        "nl" => Ok(Some(Algorithm::Dutch)),
+        "fi" => Ok(Some(Algorithm::Finnish)),
+        "da" => Ok(Some(Algorithm::Danish)),
+        "hu" => Ok(Some(Algorithm::Hungarian)),
+        "ro" => Ok(Some(Algorithm::Romanian)),
+        "tr" => Ok(Some(Algorithm::Turkish)),
+        "none" => Ok(None),
+        _ => bail!(
+            "Unsupported language: '{}'. Supported: pl, en, de, fr, es, it, pt, ru, sv, nl, fi, da, hu, ro, tr, none",
+            lang
+        ),
+    }
+}
+
+/// Read the language stored in an index's manifest. Defaults to "pl" for backward compat.
+pub fn read_index_language(index_path: &Path) -> String {
+    let manifest = load_manifest(index_path);
+    manifest.language.unwrap_or_else(|| "pl".to_string())
 }
 
 /// Read file and add to index. Returns true if added.
@@ -166,13 +243,18 @@ fn scan_corpus(corpus_path: &Path, index_path: &Path) -> HashMap<String, FileEnt
 }
 
 pub fn open_index(index_path: &Path) -> Result<Index> {
+    let manifest = load_manifest(index_path);
+    let lang = manifest.language.as_deref().unwrap_or("pl");
+    let algorithm = resolve_language(lang)?;
+
     let index = Index::open_in_dir(index_path).context("Failed to open existing index")?;
-    register_tokenizer(&index);
+    register_tokenizer(&index, algorithm);
     Ok(index)
 }
 
 /// Full rebuild from scratch
-pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
+pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str) -> Result<Index> {
+    let algorithm = resolve_language(language)?;
     let schema = build_schema();
 
     if index_path.exists() {
@@ -181,7 +263,7 @@ pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
     std::fs::create_dir_all(index_path)?;
 
     let index = Index::create_in_dir(index_path, schema.clone())?;
-    register_tokenizer(&index);
+    register_tokenizer(&index, algorithm);
 
     let mut writer: IndexWriter = index.writer(WRITER_HEAP)?;
     let path_field = schema.get_field(FIELD_PATH).unwrap();
@@ -197,7 +279,13 @@ pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
     }
 
     writer.commit()?;
-    save_manifest(index_path, &Manifest { files: current })?;
+    save_manifest(
+        index_path,
+        &Manifest {
+            files: current,
+            language: Some(language.to_string()),
+        },
+    )?;
     eprintln!("Indexed {} files into {}", file_count, index_path.display());
     Ok(index)
 }
@@ -205,6 +293,7 @@ pub fn build_index(corpus_path: &Path, index_path: &Path) -> Result<Index> {
 /// Incremental update: add new/changed, remove deleted
 pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, bool)> {
     let old_manifest = load_manifest(index_path);
+    let language = old_manifest.language.clone();
     let current = scan_corpus(corpus_path, index_path);
 
     let mut to_add: Vec<&String> = Vec::new();
@@ -245,7 +334,13 @@ pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, boo
     }
 
     writer.commit()?;
-    save_manifest(index_path, &Manifest { files: current })?;
+    save_manifest(
+        index_path,
+        &Manifest {
+            files: current,
+            language,
+        },
+    )?;
     eprintln!(
         "Updated index: +{} added/changed, -{} removed",
         added,
