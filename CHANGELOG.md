@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-15
+
+### Added
+- OpenAI-compatible agent runner (`runner_openai.py`) supporting GPT and o-series models alongside the existing Gemini runner
+- Web UI with FastAPI backend: SSE-streamed chat interface with side-by-side model comparison (`MODEL_LEFT` / `MODEL_RIGHT`)
+- `on_event` streaming callback in both Gemini and OpenAI runners for real-time tool-call and answer events
+- Docker packaging: multi-stage `Dockerfile` (Rust builder + Python runtime), `docker-compose.yml`, and `entrypoint.sh` for one-command deployment
+- Shared `agent/tools.py` module decoupling corpus tool definitions from model-specific runners
+
+### Changed
+- `agent/runner.py` refactored into a thin dispatcher that routes to `runner_gemini.py` or `runner_openai.py` based on model name prefix
+
 ## [0.6.0] - 2026-03-14
 
 ### Added

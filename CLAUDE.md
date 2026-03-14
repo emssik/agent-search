@@ -1,0 +1,1 @@
+NIE szacuj czasu pracy. Zadania wykonuje model, nie człowiek.
