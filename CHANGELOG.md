@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-14
+
+### Added
+- `usage.md` quick-reference guide covering all subcommands, flags, output modes, and usage patterns
+- Path filter edge-case tests: spaces and Unicode/emoji in directory names, exact glob segment matching, and double-star patterns through multi-level space-separated paths
+- CLI regression tests: `--language` change triggers automatic index rebuild; `--grep` filter is not silently dropped when the target file has a low BM25 rank
+
 ## [0.5.0] - 2026-03-14
 
 ### Added

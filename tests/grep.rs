@@ -589,3 +589,96 @@ fn test_grep_chunks_include() {
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].file_path, "docs/guide.md");
 }
+
+// =============================================================================
+// Krok 4b: --include with spaces and Unicode in paths
+// =============================================================================
+
+#[test]
+fn test_grep_include_path_with_spaces() {
+    let tmp = setup_corpus(&[
+        ("my docs/guide.md", "keyword in guide"),
+        ("my docs/nested/deep.md", "keyword deep"),
+        ("archive/old.md", "keyword in archive"),
+    ]);
+
+    let filter = PathFilter::new(&["my docs/**".to_string()], &[]).unwrap();
+    let results = grep::grep_files(tmp.path(), "keyword", 100, &filter).unwrap();
+
+    assert_eq!(results.len(), 2, "Should find 2 files in 'my docs/'");
+    for fm in &results {
+        assert!(
+            fm.path.starts_with("my docs/"),
+            "Should only include 'my docs/', got: {}",
+            fm.path
+        );
+    }
+}
+
+#[test]
+fn test_grep_include_path_with_emoji() {
+    let tmp = setup_corpus(&[
+        ("🚦 project/notes.md", "keyword in notes"),
+        ("🚦 project/sub/deep.md", "keyword deep"),
+        ("other/file.md", "keyword in other"),
+    ]);
+
+    let filter = PathFilter::new(&["🚦 project/**".to_string()], &[]).unwrap();
+    let results = grep::grep_files(tmp.path(), "keyword", 100, &filter).unwrap();
+
+    assert_eq!(results.len(), 2, "Should find 2 files in emoji dir");
+    for fm in &results {
+        assert!(
+            fm.path.starts_with("🚦 project/"),
+            "Should only include emoji dir, got: {}",
+            fm.path
+        );
+    }
+}
+
+#[test]
+fn test_grep_include_wildcard_with_spaces_and_emoji() {
+    let tmp = setup_corpus(&[
+        ("01.Projects/02_MONEY/🚦 ZR - java master/Out/Lekcja 08.md", "keyword java"),
+        ("01.Projects/02_MONEY/🚦 ZR - python master/Out/Lekcja A.md", "keyword python"),
+        ("01.Projects/other/file.md", "keyword other"),
+    ]);
+
+    // Glob segment must match full directory name.
+    // "🚦 ZR - java master" requires a wildcard prefix: **/*java master*/**
+    let filter = PathFilter::new(&["**/*java master*/**".to_string()], &[]).unwrap();
+    let results = grep::grep_files(tmp.path(), "keyword", 100, &filter).unwrap();
+
+    assert_eq!(results.len(), 1, "Should find 1 file matching *java master* glob");
+    assert!(results[0].path.contains("java master"));
+}
+
+#[test]
+fn test_grep_include_exact_segment_does_not_match_partial() {
+    let tmp = setup_corpus(&[
+        ("prefix-docs/guide.md", "keyword here"),
+        ("docs/guide.md", "keyword there"),
+    ]);
+
+    // **/docs/** matches only the exact segment "docs", not "prefix-docs"
+    let filter = PathFilter::new(&["**/docs/**".to_string()], &[]).unwrap();
+    let results = grep::grep_files(tmp.path(), "keyword", 100, &filter).unwrap();
+
+    assert_eq!(results.len(), 1, "Should match only exact 'docs' segment");
+    assert_eq!(results[0].path, "docs/guide.md");
+}
+
+#[test]
+fn test_grep_include_double_star_spaces() {
+    let tmp = setup_corpus(&[
+        ("a b/c d/file.md", "keyword here"),
+        ("a b/other.md", "keyword there"),
+        ("normal/file.md", "keyword normal"),
+    ]);
+
+    let filter = PathFilter::new(&["**/c d/**".to_string()], &[]).unwrap();
+    let results = grep::grep_files(tmp.path(), "keyword", 100, &filter).unwrap();
+
+    assert_eq!(results.len(), 1, "Should match through dirs with spaces");
+    assert!(results[0].path.contains("c d/"));
+}
