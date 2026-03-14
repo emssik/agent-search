@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-14
+
+### Added
+- `agent/` Python package: Gemini-powered AI agent that uses `agent-search` as tool calls (search, grep, read_file, glob), with multi-turn function calling loop and token cost tracking
+- Unit tests for the agent runner covering path-traversal security, parallel function call dispatch, CLI error propagation, and glob corpus isolation
+- `ai_docs/gemini_api.md` Gemini API reference for agent development
+
 ## [0.5.1] - 2026-03-14
 
 ### Added
