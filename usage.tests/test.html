@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Karta Ogrodniczki</title>
+    <style>
+        :root { --primary: #4caf50; --bg: #f1f8e9; --card: #ffffff; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .a4-page { width: 210mm; min-height: 297mm; background: var(--bg); padding: 10mm; box-sizing: border-box; }
+        .header { text-align: center; color: var(--primary); margin-bottom: 15px; }
+        .plant-name-box { background: var(--card); padding: 15px; border-radius: 15px; border: 2px solid var(--primary); margin-bottom: 20px; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .day { background: var(--card); padding: 12px; border-radius: 20px; border: 1px solid #c8e6c9; }
+        .day-title { color: var(--primary); font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .checks { display: flex; justify-content: space-around; margin-bottom: 10px; }
+        .check-item { text-align: center; font-size: 10px; display: flex; flex-direction: column; align-items: center; }
+        .box { width: 20px; height: 20px; border: 2px solid var(--primary); border-radius: 5px; margin-top: 4px; }
+        .icon { width: 18px; height: 18px; fill: var(--primary); }
+        .inputs { display: flex; gap: 10px; font-size: 11px; margin-bottom: 8px; }
+        .line { border-bottom: 1px solid #ddd; flex-grow: 1; min-width: 30px; display: inline-block; }
+        .notes { border: 1px dashed #ccc; height: 35px; border-radius: 10px; font-size: 10px; padding: 5px; color: #aaa; }
+        @media print { body { background: white; padding: 0; } .a4-page { width: 100%; padding: 5mm; } }
+    </style>
+</head>
+<body>
+    <div class="a4-page">
+        <div class="header"><h1>🌿 Karta Małej Ogrodniczki 🌿</h1></div>
+        <div class="plant-name-box">Moja roślinka ma na imię: _________________________________</div>
+        <div class="grid">
+            <script>
+                const icons = {
+                    water: '<svg class="icon" viewBox="0 0 24 24"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>',
+                    sun: '<svg class="icon" viewBox="0 0 24 24"><path d="M12,7L11,2H13L12,7M19,12L24,11V13L19,12M12,17L13,22H11L12,17M5,12L0,13V11L5,12M16.95,7L20.48,3.46L21.9,4.88L18.37,8.41L16.95,7M18.37,15.59L21.9,19.12L20.48,20.54L16.95,17L18.37,15.59M7.05,17L3.54,20.54L2.12,19.12L5.63,15.59L7.05,17M5.63,8.41L2.12,4.88L3.54,3.46L7.05,7L5.63,8.41M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/></svg>',
+                    love: '<svg class="icon" viewBox="0 0 24 24"><path d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5C2,5.41 4.41,3 7.5,3C9.24,3 10.91,3.81 12,5.08C13.09,3.81 14.76,3 16.5,3C19.59,3 22,5.41 22,8.5C22,12.27 18.6,15.36 13.45,20.03L12,21.35Z"/></svg>'
+                };
+                for(let i=1; i<=7; i++) {
+                    document.write(`
+                        <div class="day" ${i===7 ? 'style="grid-column: span 2"' : ''}>
+                            <div class="day-title"><span>Dzień ${i}</span> 📅 ________</div>
+                            <div class="checks">
+                                <div class="check-item">${icons.water} Woda <div class="box"></div></div>
+                                <div class="check-item">${icons.sun} Słońce <div class="box"></div></div>
+                                <div class="check-item">${icons.love} Miłość <div class="box"></div></div>
+                            </div>
+                            <div class="inputs">
+                                <div>Listki: <span class="line"></span></div>
+                                <div>Wzrost: <span class="line"></span> cm</div>
+                            </div>
+                            <div class="notes">Dzisiaj widzę, że...</div>
+                        </div>
+                    `);
+                }
+            </script>
+        </div>
+        <div style="margin-top: 20px; border: 2px dashed var(--primary); height: 150px; border-radius: 20px; display: flex; align-items: center; justify-content: center; color: #ccc; background: white;">Miejsce na rysunek roślinki 🎨</div>
+    </div>
+</body>
+</html>

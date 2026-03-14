@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use tiktoken_rs::{cl100k_base, CoreBPE};
+use tiktoken_rs::{CoreBPE, cl100k_base};
 
 use crate::types::Chunk;
 

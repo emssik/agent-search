@@ -4,11 +4,13 @@ version = 4
 
 [[package]]
 name = "agent-search"
-version = "0.4.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "clap",
+ "globset",
  "ignore",
+ "regex",
  "serde",
  "serde_json",
  "snowball_stemmers_rs",

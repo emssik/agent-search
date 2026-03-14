@@ -1,8 +1,13 @@
 use agent_search::dedup::merge_chunks;
+use agent_search::filter::PathFilter;
 use agent_search::index;
 use agent_search::types::Chunk;
 use std::fs;
 use tempfile::TempDir;
+
+fn no_filter() -> PathFilter {
+    PathFilter::default()
+}
 
 // =============================================================================
 // Bug 1: scan_corpus indexes its own index directory
@@ -25,12 +30,16 @@ fn bug1_scan_corpus_indexes_own_index_dir_default_hidden() {
     fs::write(idx_dir.join("manifest.json"), r#"{"files":{}}"#).unwrap();
     fs::write(idx_dir.join("some_index_file.txt"), "index data").unwrap();
 
-    let idx = index::build_index(corpus, &idx_dir).unwrap();
+    let idx = index::build_index(corpus, &idx_dir, "pl").unwrap();
     let reader = idx.reader().unwrap();
     let searcher = reader.searcher();
 
     // Index should contain only hello.txt, NOT files from .agent-search-index
-    assert_eq!(searcher.num_docs(), 1, "Should index only corpus files, not index dir files");
+    assert_eq!(
+        searcher.num_docs(),
+        1,
+        "Should index only corpus files, not index dir files"
+    );
 }
 
 #[test]
@@ -47,7 +56,7 @@ fn bug1_scan_corpus_indexes_non_hidden_index_dir() {
     let idx_dir = corpus.join("my-search-index");
     fs::create_dir_all(&idx_dir).unwrap();
 
-    let idx = index::build_index(corpus, &idx_dir).unwrap();
+    let idx = index::build_index(corpus, &idx_dir, "pl").unwrap();
     let reader = idx.reader().unwrap();
     let searcher = reader.searcher();
 
@@ -131,7 +140,11 @@ fn bug2_merge_chunks_overlapping_still_merges() {
     assert_eq!(chunk.end_line, 10);
 
     let content_lines: Vec<&str> = chunk.content.lines().collect();
-    assert_eq!(content_lines.len(), 10, "Merged content should have 10 lines");
+    assert_eq!(
+        content_lines.len(),
+        10,
+        "Merged content should have 10 lines"
+    );
     assert_eq!(content_lines[0], "line1");
     assert_eq!(content_lines[9], "line10");
 }
@@ -152,7 +165,7 @@ fn bug3_mtime_subsecond_change_not_detected() {
     fs::write(&file_path, "aaaa").unwrap(); // 4 bytes
 
     // Build initial index
-    index::build_index(corpus, &idx_dir).unwrap();
+    index::build_index(corpus, &idx_dir, "pl").unwrap();
 
     // Immediately overwrite with same-size, different content
     fs::write(&file_path, "bbbb").unwrap(); // still 4 bytes, same second likely
@@ -197,13 +210,24 @@ fn bug4_line_matches_stemmed_terms() {
     let content = lines.join("\n");
     fs::write(corpus.join("test.txt"), content).unwrap();
 
-    let idx = index::build_index(corpus, &idx_dir).unwrap();
+    let idx = index::build_index(corpus, &idx_dir, "pl").unwrap();
 
     // Search with a different inflected form (context_lines=2 → fallback shows first 4 lines)
-    let chunks = agent_search::search::search(&idx, "programowania", 2, 100).unwrap();
+    let chunks = agent_search::search::search(
+        &idx,
+        "programowania",
+        2,
+        100,
+        &no_filter(),
+        Some(snowball_stemmers_rs::Algorithm::Polish),
+    )
+    .unwrap();
 
     // BM25 should find the document (stemmer normalizes both forms)
-    assert!(!chunks.is_empty(), "BM25 should find the document via stemming");
+    assert!(
+        !chunks.is_empty(),
+        "BM25 should find the document via stemming"
+    );
 
     // The chunk should contain the actual hit line "programowanie w rust"
     // BUG: Before fix, line_matches_any("programowanie w rust", ["programowania"])
@@ -216,4 +240,115 @@ fn bug4_line_matches_stemmed_terms() {
          Got content: {:?}",
         chunk.content
     );
+}
+
+// =============================================================================
+// Language / stemmer tests
+// =============================================================================
+
+#[test]
+fn test_english_stemmer_indexes_and_searches() {
+    let tmp = TempDir::new().unwrap();
+    let corpus = tmp.path();
+    let idx_dir = corpus.join(".agent-search-index");
+
+    fs::write(
+        corpus.join("doc.txt"),
+        "The runners were running quickly through the streets",
+    )
+    .unwrap();
+
+    let idx = index::build_index(corpus, &idx_dir, "en").unwrap();
+
+    // "running" and "run" should both stem to "run" with English stemmer
+    let results = agent_search::search::search_files(&idx, "run", 10, &no_filter()).unwrap();
+    assert!(
+        !results.is_empty(),
+        "English stemmer should match 'run' → 'runners'/'running'"
+    );
+}
+
+#[test]
+fn test_no_stemmer_option() {
+    let tmp = TempDir::new().unwrap();
+    let corpus = tmp.path();
+    let idx_dir = corpus.join(".agent-search-index");
+
+    fs::write(corpus.join("doc.txt"), "The runners were running quickly").unwrap();
+
+    let idx = index::build_index(corpus, &idx_dir, "none").unwrap();
+
+    // Without stemming, "run" should NOT match "runners" or "running"
+    let results = agent_search::search::search_files(&idx, "run", 10, &no_filter()).unwrap();
+    assert!(
+        results.is_empty(),
+        "Without stemming, 'run' should not match 'runners'/'running'"
+    );
+
+    // But exact token should match
+    let results = agent_search::search::search_files(&idx, "running", 10, &no_filter()).unwrap();
+    assert!(!results.is_empty(), "Exact token 'running' should match");
+}
+
+#[test]
+fn test_polish_default_backward_compat() {
+    // An index built with "pl" should work the same as before
+    let tmp = TempDir::new().unwrap();
+    let corpus = tmp.path();
+    let idx_dir = corpus.join(".agent-search-index");
+
+    let mut lines: Vec<String> = (1..=20).map(|i| format!("zwykla linia {}", i)).collect();
+    lines[10] = "programowanie w rust jest wydajne".to_string();
+    let content = lines.join("\n");
+    fs::write(corpus.join("test.txt"), content).unwrap();
+
+    let idx = index::build_index(corpus, &idx_dir, "pl").unwrap();
+
+    // Polish stemmer should match inflected forms
+    let results =
+        agent_search::search::search_files(&idx, "programowania", 10, &no_filter()).unwrap();
+    assert!(
+        !results.is_empty(),
+        "Polish stemmer should match inflected forms"
+    );
+}
+
+#[test]
+fn test_index_language_persisted_in_manifest() {
+    let tmp = TempDir::new().unwrap();
+    let corpus = tmp.path();
+    let idx_dir = corpus.join(".agent-search-index");
+
+    fs::write(corpus.join("doc.txt"), "hello world").unwrap();
+
+    index::build_index(corpus, &idx_dir, "en").unwrap();
+
+    // Read language back from manifest
+    let lang = index::read_index_language(&idx_dir);
+    assert_eq!(lang, "en", "Language should be persisted in manifest");
+}
+
+#[test]
+fn test_unsupported_language_errors() {
+    let result = index::resolve_language("klingon");
+    assert!(result.is_err(), "Unsupported language should return error");
+}
+
+#[test]
+fn test_update_index_preserves_language() {
+    let tmp = TempDir::new().unwrap();
+    let corpus = tmp.path();
+    let idx_dir = corpus.join(".agent-search-index");
+
+    fs::write(corpus.join("doc.txt"), "hello world").unwrap();
+    index::build_index(corpus, &idx_dir, "en").unwrap();
+
+    // Add a new file and update
+    fs::write(corpus.join("doc2.txt"), "goodbye world").unwrap();
+    let (_idx, changed) = index::update_index(corpus, &idx_dir).unwrap();
+    assert!(changed);
+
+    // Language should still be "en"
+    let lang = index::read_index_language(&idx_dir);
+    assert_eq!(lang, "en", "Language should be preserved after update");
 }

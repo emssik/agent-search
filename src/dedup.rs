@@ -29,12 +29,10 @@ pub fn merge_chunks(chunks: Vec<Chunk>) -> Vec<Chunk> {
                 if chunk.start_line <= last.end_line + 1 {
                     if chunk.end_line > last.end_line {
                         // Extend content: append only the new lines
-                        let overlap = last.end_line.saturating_sub(chunk.start_line.saturating_sub(1));
-                        let new_lines: Vec<&str> = chunk
-                            .content
-                            .lines()
-                            .skip(overlap)
-                            .collect();
+                        let overlap = last
+                            .end_line
+                            .saturating_sub(chunk.start_line.saturating_sub(1));
+                        let new_lines: Vec<&str> = chunk.content.lines().skip(overlap).collect();
                         if !new_lines.is_empty() {
                             last.content.push('\n');
                             last.content.push_str(&new_lines.join("\n"));
@@ -55,6 +53,10 @@ pub fn merge_chunks(chunks: Vec<Chunk>) -> Vec<Chunk> {
     }
 
     // Sort by score descending
-    result.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    result.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     result
 }
