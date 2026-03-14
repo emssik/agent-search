@@ -12,7 +12,7 @@ Built on the **GrepRAG** architecture — lexical search with BM25 ranking, dedu
 Corpus → Tantivy Index → BM25 Search → Chunk Extraction → Dedup → Token Truncation → JSON
 ```
 
-1. **Indexing** — scans a directory (respects `.gitignore`), tokenizes with a Polish Snowball stemmer, writes a Tantivy index
+1. **Indexing** — scans a directory (respects `.gitignore`), tokenizes with a configurable Snowball stemmer, writes a Tantivy index
 2. **BM25 Search** — document ranking with file path boosting (x3)
 3. **Chunk Extraction** — extracts fragments with context around hits, density-based scoring per chunk
 4. **Deduplication** — merges overlapping/adjacent fragments from the same file
@@ -26,71 +26,132 @@ cargo build --release
 
 Binary: `target/release/agent-search`
 
-## Usage
+## Subcommands
 
-### Indexing
+### `index` — Build search index
 
 ```bash
 # Build index (incremental, or full rebuild with --force)
 agent-search index -c /path/to/corpus
 agent-search index -c /path/to/corpus --force
+
+# Specify stemmer language (default: pl)
+agent-search index -c /path/to/corpus --language en
 ```
 
-### Searching
+Supported languages: `pl`, `en`, `de`, `fr`, `es`, `it`, `pt`, `ru`, `sv`, `nl`, `fi`, `da`, `hu`, `ro`, `tr`, or `none` (no stemming). Language choice is persisted in the index manifest — changing `--language` triggers an automatic rebuild.
+
+### `search` — BM25 search over indexed corpus
 
 ```bash
 # Default (chunks mode) — returns content fragments with context
 agent-search search -c ./corpus -q "authentication flow"
 
-# Files mode — returns only file paths + scores (no content, minimal tokens)
+# Files mode — returns only file paths + scores
 agent-search search -c ./corpus --mode files -q "Spring Security"
 
-# Summary mode — groups results by directory with file counts
+# Summary mode — groups results by directory
 agent-search search -c ./corpus --mode summary -q "Docker"
 
 # Multi-query — searches for multiple terms, merges results
 agent-search search -c ./corpus -q "MockMvc" -q "TestRestTemplate"
 
-# Limit results
-agent-search search -c ./corpus --mode files -q "test" --max-results 5
+# Hybrid mode — BM25 + regex filter
+agent-search search -c ./corpus -q "lekcja programowanie" --grep "SELECT|INSERT"
 
-# Custom chunk parameters
-agent-search search -c ./corpus -q "query" \
-  --context-lines 15 \
-  --token-budget 8192
+# Path filtering
+agent-search search -c ./corpus -q "test" --include "src/**" --exclude "src/vendor/**"
+
+# Sort results
+agent-search search -c ./corpus --mode files -q "auth" --sort mtime
+
+# Limit results and custom parameters
+agent-search search -c ./corpus -q "query" --max-results 5 --context-lines 15 --token-budget 8192
 
 # Rebuild index before searching
 agent-search search -c ./corpus -q "error handling" --reindex
 ```
 
-### Output modes
+### `grep` — Pure regex search (no index required)
+
+```bash
+# Exact match
+agent-search grep -c ./corpus -p "pg_dump"
+
+# Regex pattern
+agent-search grep -c ./corpus -p "(?i)error|warn|fatal"
+
+# Batch search — multiple patterns in one call
+agent-search grep -c ./corpus -p "rsync|rclone|restic|certbot" --mode files
+
+# With path filtering
+agent-search grep -c ./corpus -p "TODO" --include "src/**" --exclude "**/*test*/**"
+
+# Explore a directory found in search results
+agent-search grep -c ./corpus -p "." --include "**/*Onboarding*/**" --mode files
+```
+
+## Output modes
+
+All three subcommands (`search`, `grep`) support the same output modes:
 
 **`--mode chunks`** (default) — full content fragments with context lines, deduplication, and token budget truncation. Best for injecting into LLM context.
 
-**`--mode files`** — file paths and BM25 scores only. No content extraction. Use when you need to know *which* files are relevant without spending tokens on content.
+**`--mode files`** — file paths and BM25/match scores only. No content extraction. Use when you need to know *which* files are relevant without spending tokens on content.
 
-**`--mode summary`** — file matches grouped by parent directory with counts and top scores. Use to understand *where* in the codebase a topic lives.
+**`--mode summary`** — file matches grouped by parent directory with counts and top scores. Use to understand *where* in the corpus a topic lives.
 
-### Multi-query
+## Hybrid mode
 
-Pass multiple `-q` flags to search for several terms at once. Results are merged by file path (highest score wins for files/summary modes) or deduplicated by position (for chunks mode).
+The `search --grep` flag combines BM25 ranking with regex filtering. BM25 finds topically relevant files, then the regex narrows results to those containing a specific pattern. This is the most effective mode for queries like "lessons about databases that mention SQL" — neither pure BM25 nor pure grep would find the right set alone.
 
 ```bash
-agent-search search -c ./corpus -q "authenticate" -q "authorize" --mode files
+agent-search search -c ./corpus -q "konfiguracja serwera" --grep "letsencrypt|certbot|ssl"
 ```
 
-### Options
+## Options reference
+
+### `search`
 
 | Flag | Default | Description |
 |---|---|---|
+| `-c, --corpus` | — | Path to the corpus directory (required) |
+| `-q, --query` | — | Search query (required, repeatable for multi-query) |
 | `--mode` | `chunks` | Output mode: `chunks`, `files`, or `summary` |
 | `--max-results` | 100 | Maximum number of results |
 | `--context-lines` | 10 | Lines of context around each hit (chunks mode) |
 | `--token-budget` | 4096 | Maximum token count in output (chunks mode) |
+| `--grep` | — | Regex filter applied on top of BM25 results (hybrid mode) |
+| `--include` | — | Include only files matching glob pattern (repeatable) |
+| `--exclude` | — | Exclude files matching glob pattern (repeatable) |
+| `--sort` | `score` | Sort order: `score`, `path`, or `mtime` (files/summary modes) |
 | `--index-dir` | `<corpus>/.agent-search-index` | Index directory |
-| `--force` / `--reindex` | — | Force full index rebuild |
+| `--reindex` | — | Force index rebuild before searching |
 
-### Output examples
+### `grep`
+
+| Flag | Default | Description |
+|---|---|---|
+| `-c, --corpus` | — | Path to the corpus directory (required) |
+| `-p, --pattern` | — | Regex pattern to search for (required) |
+| `--mode` | `chunks` | Output mode: `chunks`, `files`, or `summary` |
+| `--max-results` | 100 | Maximum number of results |
+| `--context-lines` | 2 | Lines of context around each match (chunks mode) |
+| `--token-budget` | 4096 | Maximum token count in output (chunks mode) |
+| `--include` | — | Include only files matching glob pattern (repeatable) |
+| `--exclude` | — | Exclude files matching glob pattern (repeatable) |
+| `--sort` | `score` | Sort order: `score`, `path`, or `mtime` (files/summary modes) |
+
+### `index`
+
+| Flag | Default | Description |
+|---|---|---|
+| `-c, --corpus` | — | Path to the corpus directory (required) |
+| `--index-dir` | `<corpus>/.agent-search-index` | Index directory |
+| `--force` | — | Force full index rebuild |
+| `--language` | `pl` | Snowball stemmer language |
+
+## Output examples
 
 **Chunks mode** (default):
 
@@ -174,9 +235,11 @@ Benchmarked on a Mac Studio M2 with an Obsidian vault of ~1400 notes.
 | Crate | Role |
 |---|---|
 | `tantivy` | Full-text search engine (BM25) |
-| `snowball_stemmers_rs` | Polish stemmer (Snowball algorithm) |
+| `snowball_stemmers_rs` | Snowball stemmer (16 languages) |
 | `tiktoken-rs` | Token counting (cl100k_base) |
 | `ignore` | File scanning with `.gitignore` support |
+| `globset` | Glob pattern matching for `--include`/`--exclude` |
+| `regex` | Regex engine for `grep` and hybrid mode |
 | `clap` | CLI |
 | `serde` / `serde_json` | JSON serialization |
 | `anyhow` | Error handling |
