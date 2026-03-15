@@ -25,6 +25,7 @@ for noisy in ("httpcore", "httpx", "google", "openai"):
 CORPUS = os.getenv("AGENT_CORPUS", "/corpus")
 STEMMER_LANGUAGE = os.getenv("STEMMER_LANGUAGE", "pl")
 MODEL_LEFT = os.getenv("AGENT_MODEL_LEFT", os.getenv("AGENT_MODEL", "gemini-3-flash-preview"))
+MODEL_CENTER = os.getenv("AGENT_MODEL_CENTER", "glm-4.7-flash")
 MODEL_RIGHT = os.getenv("AGENT_MODEL_RIGHT", "gpt-5-mini")
 
 WEB_DIR = Path(__file__).parent
@@ -36,29 +37,36 @@ app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="stati
 
 
 def _load_system_prompt() -> str:
+    p = Path(SYSTEM_PROMPT_FILE)
     try:
-        text = Path(SYSTEM_PROMPT_FILE).read_text()
+        mt = p.stat().st_mtime
     except FileNotFoundError:
         logger.warning("System prompt file not found: %s", SYSTEM_PROMPT_FILE)
-        text = ""
-    return text.replace("{{CORPUS}}", CORPUS)
+        return ""
+    if mt != _load_system_prompt._mtime:
+        _load_system_prompt._text = p.read_text().replace("{{CORPUS}}", CORPUS)
+        _load_system_prompt._mtime = mt
+    return _load_system_prompt._text
+
+_load_system_prompt._mtime = 0
+_load_system_prompt._text = ""
+
+_INDEX_HTML = (WEB_DIR / "static" / "index.html").read_text()
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return (WEB_DIR / "static" / "index.html").read_text()
+    return _INDEX_HTML
 
 
 @app.get("/api/health")
 async def health():
     corpus_path = Path(CORPUS)
     index_exists = (corpus_path / ".agent-search-index" / "manifest.json").exists()
-    file_count = sum(1 for _ in corpus_path.rglob("*.md")) if corpus_path.is_dir() else 0
     return {
         "status": "ok",
         "corpus": str(corpus_path),
         "index_exists": index_exists,
-        "file_count": file_count,
     }
 
 
@@ -80,7 +88,7 @@ def _do_reindex():
 
 @app.get("/api/config")
 async def config():
-    return {"model_left": MODEL_LEFT, "model_right": MODEL_RIGHT}
+    return {"model_left": MODEL_LEFT, "model_center": MODEL_CENTER, "model_right": MODEL_RIGHT}
 
 
 @app.post("/api/chat")

@@ -1,6 +1,40 @@
 import glob as glob_module
+import logging
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger("agent")
+
+
+def log_cost(provider: str, total_input: int, total_output: int, price_in: float, price_out: float) -> None:
+    ci = total_input / 1_000_000 * price_in
+    co = total_output / 1_000_000 * price_out
+    logger.info(
+        "─── TOKENY [%s] ───  in: %d ($%.5f)  out: %d ($%.5f)  RAZEM: $%.5f",
+        provider, total_input, ci, total_output, co, ci + co,
+    )
+
+
+def emit_stats(on_event, elapsed: float, total_input: int, total_output: int, price_in: float, price_out: float) -> None:
+    if not on_event:
+        return
+    ci = total_input / 1_000_000 * price_in
+    co = total_output / 1_000_000 * price_out
+    on_event("stats", {
+        "elapsed_s": round(elapsed, 1),
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "cost": round(ci + co, 5),
+    })
+
+
+def resolve_corpus(corpus: str) -> str:
+    import os
+    if not corpus:
+        corpus = os.getenv("AGENT_CORPUS", "")
+    if not corpus:
+        raise ValueError("corpus must be provided (or set AGENT_CORPUS env var)")
+    return corpus
 
 
 def _run_agent_search(args: list[str], corpus: str) -> tuple[str, int]:
@@ -14,6 +48,8 @@ def _run_agent_search(args: list[str], corpus: str) -> tuple[str, int]:
 
 
 def build_tools(corpus: str) -> list:
+    corpus_root = Path(corpus).resolve()
+
     def search(
         query: list[str],
         mode: str = "chunks",
@@ -69,7 +105,6 @@ def build_tools(corpus: str) -> list:
         p = Path(path)
         if not p.is_absolute():
             p = Path(corpus) / p
-        corpus_root = Path(corpus).resolve()
         if not p.resolve().is_relative_to(corpus_root):
             raise PermissionError(f"Access denied: path is outside corpus ({p})")
         lines = p.read_text().splitlines(keepends=True)

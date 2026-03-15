@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>agent-search</title>
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
   <header>
@@ -14,12 +14,17 @@
 
   <div id="arena">
     <section class="panel" id="panel-left">
-      <div class="panel-header"><span class="model-name">...</span></div>
+      <div class="panel-header"><span class="model-name">...</span><button class="stop-btn" hidden>&#x25a0;</button></div>
+      <div class="panel-messages"></div>
+    </section>
+    <div class="panel-divider"></div>
+    <section class="panel" id="panel-center">
+      <div class="panel-header"><span class="model-name">...</span><button class="stop-btn" hidden>&#x25a0;</button></div>
       <div class="panel-messages"></div>
     </section>
     <div class="panel-divider"></div>
     <section class="panel" id="panel-right">
-      <div class="panel-header"><span class="model-name">...</span></div>
+      <div class="panel-header"><span class="model-name">...</span><button class="stop-btn" hidden>&#x25a0;</button></div>
       <div class="panel-messages"></div>
     </section>
   </div>
@@ -32,6 +37,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="/static/chat.js?v=3"></script>
+  <script src="/static/chat.js?v=4"></script>
 </body>
 </html>

@@ -1,5 +1,4 @@
 """Tests confirming bugs in runner.py (and verifying fixes)."""
-import shutil
 import sys
 import tempfile
 import unittest
@@ -12,7 +11,7 @@ sys.modules.setdefault("google", MagicMock())
 sys.modules.setdefault("google.genai", MagicMock())
 sys.modules.setdefault("google.genai.types", MagicMock())
 
-import agent.runner as runner_module
+import agent.tools as tools_module
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -30,7 +29,7 @@ class TestReadFilePathTraversal(unittest.TestCase):
         # Create a sensitive file outside the corpus
         self.secret = self.corpus.parent / "secret.txt"
         self.secret.write_text("top-secret\n")
-        tools = runner_module._build_tools(str(self.corpus))
+        tools = tools_module.build_tools(str(self.corpus))
         self.read_file = next(f for f in tools if f.__name__ == "read_file")
 
     def tearDown(self):
@@ -79,7 +78,7 @@ class TestAgentLoopMultipleParts(unittest.TestCase):
             call_log = []
 
             # Patch _build_tools to inject a spy tool
-            original_build = runner_module._build_tools
+            original_build = tools_module.build_tools
 
             def patched_build(c):
                 tools = original_build(c)
@@ -119,10 +118,11 @@ class TestAgentLoopMultipleParts(unittest.TestCase):
             mock_client = MagicMock()
             mock_client.models.generate_content.side_effect = [resp1, resp2]
 
-            with patch.object(runner_module, "_build_tools", patched_build), \
-                 patch("agent.runner.genai") as mock_genai:
+            import agent.runner_gemini as runner_gemini_module
+            with patch.object(runner_gemini_module, "build_tools", patched_build), \
+                 patch("agent.runner_gemini.genai") as mock_genai:
                 mock_genai.Client.return_value = mock_client
-                runner_module.run_agent(
+                runner_gemini_module.run_agent(
                     task="test", corpus=corpus_dir, max_turns=5
                 )
 
@@ -140,32 +140,32 @@ class TestAgentSearchErrorPropagation(unittest.TestCase):
 
     def test_returncode_returned(self):
         """_run_agent_search must return the real returncode."""
-        with patch("agent.runner.subprocess.run") as mock_run:
+        with patch("agent.tools.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 stdout="error: bad regex\n",
                 stderr="",
                 returncode=1,
             )
-            output, code = runner_module._run_agent_search(["search", "-q", "x"], "/corpus")
+            output, code = tools_module._run_agent_search(["search", "-q", "x"], "/corpus")
         self.assertEqual(code, 1, "returncode 1 must be passed through")
 
     def test_search_tool_raises_on_nonzero(self):
         """search() tool must raise RuntimeError when CLI exits with error."""
         with tempfile.TemporaryDirectory() as corpus_dir:
-            tools = runner_module._build_tools(corpus_dir)
+            tools = tools_module.build_tools(corpus_dir)
             search_fn = next(f for f in tools if f.__name__ == "search")
 
-            with patch("agent.runner._run_agent_search", return_value=("error output", 1)):
+            with patch("agent.tools._run_agent_search", return_value=("error output", 1)):
                 with self.assertRaises(RuntimeError):
                     search_fn(query=["test"])
 
     def test_grep_tool_raises_on_nonzero(self):
         """grep() tool must raise RuntimeError when CLI exits with error."""
         with tempfile.TemporaryDirectory() as corpus_dir:
-            tools = runner_module._build_tools(corpus_dir)
+            tools = tools_module.build_tools(corpus_dir)
             grep_fn = next(f for f in tools if f.__name__ == "grep")
 
-            with patch("agent.runner._run_agent_search", return_value=("error output", 2)):
+            with patch("agent.tools._run_agent_search", return_value=("error output", 2)):
                 with self.assertRaises(RuntimeError):
                     grep_fn(pattern="test")
 
@@ -185,7 +185,7 @@ class TestGlobSearchesCorpus(unittest.TestCase):
             (corpus / "subdir").mkdir()
             (corpus / "subdir" / "deep.txt").write_text("deep")
 
-            tools = runner_module._build_tools(corpus_dir)
+            tools = tools_module.build_tools(corpus_dir)
             glob_fn = next(f for f in tools if f.__name__ == "glob")
 
             result = glob_fn("**/*.txt")
@@ -195,7 +195,7 @@ class TestGlobSearchesCorpus(unittest.TestCase):
     def test_glob_does_not_leak_cwd(self):
         """Files from CWD that are not in corpus must NOT appear."""
         with tempfile.TemporaryDirectory() as corpus_dir:
-            tools = runner_module._build_tools(corpus_dir)
+            tools = tools_module.build_tools(corpus_dir)
             glob_fn = next(f for f in tools if f.__name__ == "glob")
 
             result = glob_fn("*.py")

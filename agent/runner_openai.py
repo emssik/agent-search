@@ -1,10 +1,10 @@
 import json
 import logging
-import os
+import time
 
 from openai import OpenAI
 
-from .tools import build_tools
+from .tools import build_tools, emit_stats, log_cost, resolve_corpus
 
 logger = logging.getLogger("agent")
 
@@ -147,15 +147,6 @@ _TOOL_SCHEMAS = [
 ]
 
 
-def _log_cost(total_input: int, total_output: int) -> None:
-    ci = total_input / 1_000_000 * _PRICE_INPUT_PER_1M
-    co = total_output / 1_000_000 * _PRICE_OUTPUT_PER_1M
-    logger.info(
-        "─── TOKENY [openai] ───  in: %d ($%.5f)  out: %d ($%.5f)  RAZEM: $%.5f",
-        total_input, ci, total_output, co, ci + co,
-    )
-
-
 def run_agent(
     task: str,
     system_prompt: str = "",
@@ -164,10 +155,8 @@ def run_agent(
     max_turns: int = 20,
     on_event=None,
 ) -> str:
-    if not corpus:
-        corpus = os.getenv("AGENT_CORPUS", "")
-    if not corpus:
-        raise ValueError("corpus must be provided (or set AGENT_CORPUS env var)")
+    t0 = time.time()
+    corpus = resolve_corpus(corpus)
 
     client = OpenAI()
     tools = build_tools(corpus)
@@ -209,8 +198,7 @@ def run_agent(
                 except json.JSONDecodeError:
                     fn_args = {}
 
-                args_str = json.dumps(fn_args, ensure_ascii=False)
-                logger.info("[%s] [Turn %d] FUNCTION_CALL %s | args: %s", model, turn, fn_name, args_str)
+                logger.info("[%s] [Turn %d] FUNCTION_CALL %s | args: %s", model, turn, fn_name, tc.function.arguments)
                 if on_event:
                     on_event("tool_call", {"turn": turn, "tool": fn_name, "args": fn_args})
 
@@ -243,8 +231,9 @@ def run_agent(
             logger.info("[%s] [Turn %d] TEXT → final answer (%d chars)", model, turn, len(answer))
             if on_event:
                 on_event("answer", {"text": answer})
-            _log_cost(total_input, total_output)
+            log_cost("openai", total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
+            emit_stats(on_event, time.time() - t0, total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
             return answer
 
-    _log_cost(total_input, total_output)
+    log_cost("openai", total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
     raise RuntimeError(f"max_turns ({max_turns}) exceeded")

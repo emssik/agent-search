@@ -8,6 +8,8 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ZAI_API_KEY=${ZAI_API_KEY:-}
       - AGENT_MODEL_LEFT=${AGENT_MODEL_LEFT:-gemini-3-flash-preview}
+      - AGENT_MODEL_CENTER=${AGENT_MODEL_CENTER:-glm-4.7-flash}
       - AGENT_MODEL_RIGHT=${AGENT_MODEL_RIGHT:-gpt-5-mini}
       - STEMMER_LANGUAGE=${STEMMER_LANGUAGE:-pl}

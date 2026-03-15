@@ -79,7 +79,10 @@ header h1 {
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .panel-header .model-name {
@@ -87,6 +90,24 @@ header h1 {
   font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.3px;
+}
+
+.stop-btn {
+  background: none;
+  border: 1px solid var(--red);
+  color: var(--red);
+  font-size: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.stop-btn:hover {
+  background: var(--red);
+  color: #fff;
 }
 
 .panel-divider {
@@ -127,6 +148,19 @@ header h1 {
 
 .message.assistant .content {
   min-height: 1.6em;
+}
+
+.stats-bar {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
+.stats-bar:empty {
+  display: none;
 }
 
 .steps {
@@ -273,8 +307,14 @@ footer {
 #send-btn:hover { background: #5a7aee; }
 #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+@media (max-width: 1000px) {
+  #arena { flex-wrap: wrap; }
+  .panel { min-width: 45%; flex: 1 1 45%; }
+  .panel-divider { display: none; }
+}
+
 @media (max-width: 700px) {
   #arena { flex-direction: column; }
-  .panel-divider { width: 100%; height: 1px; }
+  .panel { min-width: 100%; }
   .message { max-width: 100%; }
 }

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-15
+
+### Added
+- Z.ai (GLM) runner `runner_zai.py` supporting GLM models via OpenAI-compatible API; routed automatically when model name starts with `glm`
+- Three-model arena in the web UI: center panel powered by a configurable `AGENT_MODEL_CENTER` (defaults to `glm-4.7-flash`)
+- Per-panel stop button to cancel an in-flight request without reloading the page
+- Stats bar below each response showing elapsed time, total token count, and estimated cost
+- `log_cost`, `emit_stats`, and `resolve_corpus` shared helpers extracted into `agent/tools.py` and reused by all runners
+- `ZAI_API_KEY` and `AGENT_MODEL_CENTER` environment variables in Docker Compose
+
+### Changed
+- All runners now emit a `stats` SSE event on completion, surfacing timing and cost data to the web UI
+- System prompt file is cached by mtime in `web/server.py`, avoiding redundant disk reads
+- `index.html` cached at startup; `/api/health` no longer scans corpus for file count
+- Responsive layout breakpoint added at 1000 px so the three panels wrap gracefully on mid-size screens
+
 ## [0.7.0] - 2026-03-15
 
 ### Added

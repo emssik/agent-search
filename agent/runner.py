@@ -2,11 +2,6 @@
 # dependencies = ["google-genai", "openai", "python-dotenv"]
 # ///
 
-import logging
-import os
-import sys
-from pathlib import Path
-
 
 def run_agent(
     task: str,
@@ -18,6 +13,8 @@ def run_agent(
 ) -> str:
     if model.startswith(("gpt-", "o1", "o3", "o4")):
         from .runner_openai import run_agent as _run
+    elif model.startswith("glm"):
+        from .runner_zai import run_agent as _run
     else:
         from .runner_gemini import run_agent as _run
 
@@ -32,6 +29,10 @@ def run_agent(
 
 
 if __name__ == "__main__":
+    import logging
+    import sys
+    from pathlib import Path
+
     from dotenv import load_dotenv
     load_dotenv()
 

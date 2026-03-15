@@ -4,11 +4,14 @@ const sendBtn = document.getElementById('send-btn');
 const reindexBtn = document.getElementById('reindex-btn');
 
 const panelLeft = document.getElementById('panel-left');
+const panelCenter = document.getElementById('panel-center');
 const panelRight = document.getElementById('panel-right');
 const msgsLeft = panelLeft.querySelector('.panel-messages');
+const msgsCenter = panelCenter.querySelector('.panel-messages');
 const msgsRight = panelRight.querySelector('.panel-messages');
 
 let modelLeft = '';
+let modelCenter = '';
 let modelRight = '';
 
 // Load model names from server
@@ -16,8 +19,10 @@ fetch('/api/config')
   .then(r => r.json())
   .then(cfg => {
     modelLeft = cfg.model_left;
+    modelCenter = cfg.model_center;
     modelRight = cfg.model_right;
     panelLeft.querySelector('.model-name').textContent = modelLeft;
+    panelCenter.querySelector('.model-name').textContent = modelCenter;
     panelRight.querySelector('.model-name').textContent = modelRight;
   });
 
@@ -44,32 +49,42 @@ form.addEventListener('submit', async (e) => {
   input.style.height = 'auto';
   setLoading(true);
 
-  // Add user message to both panels
+  // Add user message to all panels
   addMessage(msgsLeft, 'user', question);
+  addMessage(msgsCenter, 'user', question);
   addMessage(msgsRight, 'user', question);
 
-  // Create assistant messages in both panels
+  // Create assistant messages in all panels
   const leftEl = addMessage(msgsLeft, 'assistant', '');
+  const centerEl = addMessage(msgsCenter, 'assistant', '');
   const rightEl = addMessage(msgsRight, 'assistant', '');
 
-  // Run both models in parallel
-  const streamLeft = streamChat(question, modelLeft, leftEl, msgsLeft);
-  const streamRight = streamChat(question, modelRight, rightEl, msgsRight);
+  // Run all models in parallel with individual abort controllers
+  const streamLeft = streamChat(question, modelLeft, leftEl, msgsLeft, panelLeft);
+  const streamCenter = streamChat(question, modelCenter, centerEl, msgsCenter, panelCenter);
+  const streamRight = streamChat(question, modelRight, rightEl, msgsRight, panelRight);
 
-  await Promise.allSettled([streamLeft, streamRight]);
+  await Promise.allSettled([streamLeft, streamCenter, streamRight]);
 
   setLoading(false);
 });
 
-async function streamChat(question, model, assistantEl, container) {
+async function streamChat(question, model, assistantEl, container, panel) {
   const stepsEl = assistantEl.querySelector('.steps');
   const contentEl = assistantEl.querySelector('.content');
+  const stopBtn = panel.querySelector('.stop-btn');
+  const controller = new AbortController();
+
+  stopBtn.hidden = false;
+  const onStop = () => controller.abort();
+  stopBtn.addEventListener('click', onStop, { once: true });
 
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, model }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -115,11 +130,21 @@ async function streamChat(question, model, assistantEl, container) {
       }
     }
   } catch (err) {
-    contentEl.textContent = 'Blad polaczenia: ' + err.message;
+    if (err.name === 'AbortError') {
+      markLastStepDone(stepsEl, true);
+      const statsBar = assistantEl.querySelector('.stats-bar');
+      if (statsBar) statsBar.textContent = 'Zatrzymano';
+    } else {
+      contentEl.textContent = 'Blad polaczenia: ' + err.message;
+    }
+  } finally {
+    stopBtn.hidden = true;
+    stopBtn.removeEventListener('click', onStop);
   }
 }
 
 function handleEvent(type, data, stepsEl, contentEl, container) {
+  const statsBar = contentEl.parentElement.querySelector('.stats-bar');
   switch (type) {
     case 'thinking': {
       const step = createStep('Mysle...', true);
@@ -143,6 +168,14 @@ function handleEvent(type, data, stepsEl, contentEl, container) {
         contentEl.innerHTML = marked.parse(data.text);
       } else {
         contentEl.textContent = data.text;
+      }
+      break;
+    }
+    case 'stats': {
+      if (statsBar) {
+        const tokens = (data.input_tokens + data.output_tokens).toLocaleString();
+        const cost = '$' + data.cost.toFixed(4);
+        statsBar.textContent = data.elapsed_s + 's \u00b7 ' + tokens + ' tok \u00b7 ' + cost;
       }
       break;
     }
@@ -195,7 +228,7 @@ function addMessage(container, role, text) {
   if (role === 'user') {
     el.textContent = text;
   } else {
-    el.innerHTML = '<div class="steps"></div><div class="content"></div>';
+    el.innerHTML = '<div class="steps"></div><div class="content"></div><div class="stats-bar"></div>';
   }
   container.appendChild(el);
   scrollToBottom(container);

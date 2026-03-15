@@ -1,26 +1,17 @@
 import json
 import logging
-import os
+import time
 
 from google import genai
 from google.genai import types
 
-from .tools import build_tools
+from .tools import build_tools, emit_stats, log_cost, resolve_corpus
 
 logger = logging.getLogger("agent")
 
 # Stawki gemini-2.5-flash (03.2025)
 _PRICE_INPUT_PER_1M = 0.075
 _PRICE_OUTPUT_PER_1M = 0.30
-
-
-def _log_cost(total_input: int, total_output: int) -> None:
-    ci = total_input / 1_000_000 * _PRICE_INPUT_PER_1M
-    co = total_output / 1_000_000 * _PRICE_OUTPUT_PER_1M
-    logger.info(
-        "─── TOKENY [gemini] ───  in: %d ($%.5f)  out: %d ($%.5f)  RAZEM: $%.5f",
-        total_input, ci, total_output, co, ci + co,
-    )
 
 
 def run_agent(
@@ -31,10 +22,8 @@ def run_agent(
     max_turns: int = 20,
     on_event=None,
 ) -> str:
-    if not corpus:
-        corpus = os.getenv("AGENT_CORPUS", "")
-    if not corpus:
-        raise ValueError("corpus must be provided (or set AGENT_CORPUS env var)")
+    t0 = time.time()
+    corpus = resolve_corpus(corpus)
 
     client = genai.Client()
     tools = build_tools(corpus)
@@ -78,10 +67,11 @@ def run_agent(
             response_parts = []
             for part in function_calls:
                 fc = part.function_call
-                args_str = json.dumps(dict(fc.args), ensure_ascii=False)
+                fn_args = dict(fc.args)
+                args_str = json.dumps(fn_args, ensure_ascii=False)
                 logger.info("[%s] [Turn %d] FUNCTION_CALL %s | args: %s", model, turn, fc.name, args_str)
                 if on_event:
-                    on_event("tool_call", {"turn": turn, "tool": fc.name, "args": dict(fc.args)})
+                    on_event("tool_call", {"turn": turn, "tool": fc.name, "args": fn_args})
 
                 fn = tool_map.get(fc.name)
                 if fn is None:
@@ -89,7 +79,7 @@ def run_agent(
                     status = "error"
                 else:
                     try:
-                        tool_result = fn(**dict(fc.args))
+                        tool_result = fn(**fn_args)
                         status = "OK"
                     except Exception as e:
                         tool_result = str(e)
@@ -117,8 +107,9 @@ def run_agent(
             logger.info("[%s] [Turn %d] TEXT → final answer (%d chars)", model, turn, len(answer))
             if on_event:
                 on_event("answer", {"text": answer})
-            _log_cost(total_input, total_output)
+            log_cost("gemini", total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
+            emit_stats(on_event, time.time() - t0, total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
             return answer
 
-    _log_cost(total_input, total_output)
+    log_cost("gemini", total_input, total_output, _PRICE_INPUT_PER_1M, _PRICE_OUTPUT_PER_1M)
     raise RuntimeError(f"max_turns ({max_turns}) exceeded")
