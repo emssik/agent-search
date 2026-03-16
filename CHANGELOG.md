@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-03-16
+
+### Added
+- `--include` / `--exclude` glob flags on the `index` subcommand to filter which files are indexed
+- Filter patterns are persisted in the index manifest and automatically replayed on incremental updates and search-triggered rebuilds
+- `read_index_filter` function to restore the stored `PathFilter` from an existing index
+- `include_patterns()` and `exclude_patterns()` accessors on `PathFilter` for round-trip serialisation
+
+### Removed
+- Python agent package (`agent/`), web UI (`web/`), Docker deployment files, and supporting scripts — the project now ships as a pure Rust CLI tool
+
 ## [0.8.0] - 2026-03-15
 
 ### Added

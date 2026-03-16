@@ -9,6 +9,7 @@ use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions}
 use tantivy::tokenizer::{LowerCaser, RemoveLongFilter, SimpleTokenizer, TextAnalyzer};
 use tantivy::{Index, IndexWriter, Term, doc};
 
+use crate::filter::PathFilter;
 use crate::stemmer::StemmerFilter;
 
 pub(crate) const MAX_FILE_SIZE: u64 = 1_048_576; // 1MB
@@ -30,6 +31,10 @@ struct Manifest {
     files: HashMap<String, FileEntry>,
     #[serde(default)]
     language: Option<String>,
+    #[serde(default)]
+    include: Vec<String>,
+    #[serde(default)]
+    exclude: Vec<String>,
 }
 
 fn build_schema() -> Schema {
@@ -191,7 +196,8 @@ fn index_file(
 
 /// Scan corpus directory, return map of rel_path -> FileEntry for indexable files.
 /// Excludes the index directory to prevent self-indexing.
-fn scan_corpus(corpus_path: &Path, index_path: &Path) -> HashMap<String, FileEntry> {
+/// Applies path_filter (include/exclude globs) to skip unwanted files at scan time.
+fn scan_corpus(corpus_path: &Path, index_path: &Path, path_filter: &PathFilter) -> HashMap<String, FileEntry> {
     let mut current = HashMap::new();
     let index_canonical = index_path.canonicalize().ok();
     let walker = WalkBuilder::new(corpus_path)
@@ -231,6 +237,9 @@ fn scan_corpus(corpus_path: &Path, index_path: &Path) -> HashMap<String, FileEnt
             .unwrap_or(entry.path())
             .to_string_lossy()
             .to_string();
+        if !path_filter.matches(&rel_path) {
+            continue;
+        }
         current.insert(
             rel_path,
             FileEntry {
@@ -253,7 +262,7 @@ pub fn open_index(index_path: &Path) -> Result<Index> {
 }
 
 /// Full rebuild from scratch
-pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str) -> Result<Index> {
+pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str, path_filter: &PathFilter) -> Result<Index> {
     let algorithm = resolve_language(language)?;
     let schema = build_schema();
 
@@ -269,7 +278,7 @@ pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str) -> Res
     let path_field = schema.get_field(FIELD_PATH).unwrap();
     let body_field = schema.get_field(FIELD_BODY).unwrap();
 
-    let current = scan_corpus(corpus_path, index_path);
+    let current = scan_corpus(corpus_path, index_path, path_filter);
     let mut file_count = 0u64;
 
     for rel_path in current.keys() {
@@ -284,6 +293,8 @@ pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str) -> Res
         &Manifest {
             files: current,
             language: Some(language.to_string()),
+            include: path_filter.include_patterns().to_vec(),
+            exclude: path_filter.exclude_patterns().to_vec(),
         },
     )?;
     eprintln!("Indexed {} files into {}", file_count, index_path.display());
@@ -291,10 +302,10 @@ pub fn build_index(corpus_path: &Path, index_path: &Path, language: &str) -> Res
 }
 
 /// Incremental update: add new/changed, remove deleted
-pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, bool)> {
+pub fn update_index(corpus_path: &Path, index_path: &Path, path_filter: &PathFilter) -> Result<(Index, bool)> {
     let old_manifest = load_manifest(index_path);
     let language = old_manifest.language.clone();
-    let current = scan_corpus(corpus_path, index_path);
+    let current = scan_corpus(corpus_path, index_path, path_filter);
 
     let mut to_add: Vec<&String> = Vec::new();
     let mut to_remove: Vec<&String> = Vec::new();
@@ -339,6 +350,8 @@ pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, boo
         &Manifest {
             files: current,
             language,
+            include: path_filter.include_patterns().to_vec(),
+            exclude: path_filter.exclude_patterns().to_vec(),
         },
     )?;
     eprintln!(
@@ -347,4 +360,11 @@ pub fn update_index(corpus_path: &Path, index_path: &Path) -> Result<(Index, boo
         to_remove.len()
     );
     Ok((index, true))
+}
+
+/// Read include/exclude filters stored in the index manifest.
+/// Returns a PathFilter that matches the filters used when the index was built.
+pub fn read_index_filter(index_path: &Path) -> Result<PathFilter> {
+    let manifest = load_manifest(index_path);
+    PathFilter::new(&manifest.include, &manifest.exclude)
 }

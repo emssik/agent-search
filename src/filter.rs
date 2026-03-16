@@ -6,6 +6,8 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 pub struct PathFilter {
     include: Option<GlobSet>,
     exclude: Option<GlobSet>,
+    include_patterns: Vec<String>,
+    exclude_patterns: Vec<String>,
 }
 
 impl Default for PathFilter {
@@ -13,6 +15,8 @@ impl Default for PathFilter {
         Self {
             include: None,
             exclude: None,
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
         }
     }
 }
@@ -22,6 +26,8 @@ impl PathFilter {
         Ok(Self {
             include: build_glob_set(include)?,
             exclude: build_glob_set(exclude)?,
+            include_patterns: include.to_vec(),
+            exclude_patterns: exclude.to_vec(),
         })
     }
 
@@ -38,6 +44,16 @@ impl PathFilter {
             }
         }
         true
+    }
+
+    /// Returns the original include glob patterns.
+    pub fn include_patterns(&self) -> &[String] {
+        &self.include_patterns
+    }
+
+    /// Returns the original exclude glob patterns.
+    pub fn exclude_patterns(&self) -> &[String] {
+        &self.exclude_patterns
     }
 }
 

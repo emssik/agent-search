@@ -72,6 +72,14 @@ enum Commands {
         /// Stemmer language (default: pl)
         #[arg(long)]
         language: Option<String>,
+
+        /// Include only files matching these glob patterns
+        #[arg(long)]
+        include: Vec<String>,
+
+        /// Exclude files matching these glob patterns
+        #[arg(long)]
+        exclude: Vec<String>,
     },
     /// Search the indexed corpus
     Search {
@@ -178,6 +186,8 @@ fn main() -> Result<()> {
             index_dir,
             force,
             language,
+            include,
+            exclude,
         } => {
             if !corpus.is_dir() {
                 bail!(
@@ -186,6 +196,7 @@ fn main() -> Result<()> {
                 );
             }
             let idx_path = resolve_index_path(&corpus, &index_dir);
+            let path_filter = PathFilter::new(&include, &exclude)?;
             if force || !idx_path.exists() {
                 let lang = match language {
                     Some(lang) => {
@@ -200,7 +211,7 @@ fn main() -> Result<()> {
                         }
                     }
                 };
-                index::build_index(&corpus, &idx_path, &lang)?;
+                index::build_index(&corpus, &idx_path, &lang, &path_filter)?;
             } else {
                 if let Some(lang) = language {
                     index::resolve_language(&lang)?;
@@ -210,12 +221,12 @@ fn main() -> Result<()> {
                             "Language changed from '{}' to '{}', rebuilding index...",
                             current_lang, lang
                         );
-                        index::build_index(&corpus, &idx_path, &lang)?;
+                        index::build_index(&corpus, &idx_path, &lang, &path_filter)?;
                     } else {
-                        index::update_index(&corpus, &idx_path)?;
+                        index::update_index(&corpus, &idx_path, &path_filter)?;
                     }
                 } else {
-                    index::update_index(&corpus, &idx_path)?;
+                    index::update_index(&corpus, &idx_path, &path_filter)?;
                 }
             }
         }
@@ -248,9 +259,15 @@ fn main() -> Result<()> {
                 } else {
                     "pl".to_string()
                 };
-                index::build_index(&corpus, &idx_path, &lang)?
+                let build_filter = if idx_path.exists() {
+                    index::read_index_filter(&idx_path)?
+                } else {
+                    PathFilter::default()
+                };
+                index::build_index(&corpus, &idx_path, &lang, &build_filter)?
             } else {
-                let (index, _changed) = index::update_index(&corpus, &idx_path)?;
+                let stored_filter = index::read_index_filter(&idx_path)?;
+                let (index, _changed) = index::update_index(&corpus, &idx_path, &stored_filter)?;
                 index
             };
 
