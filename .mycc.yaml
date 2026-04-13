@@ -1,0 +1,25 @@
+actions:
+  - name: commit
+    cmd: "/c.commit --version"
+    pane: 1
+    type: claude
+
+  - name: push
+    cmd: "git push origin $(git branch --show-current)"
+    pane: 3
+
+  - name: build
+    cmd: "cargo build"
+    pane: 3
+
+  - name: build-release
+    cmd: "cargo build --release"
+    pane: 3
+
+  - name: test
+    cmd: "cargo test"
+    pane: 3
+
+  - name: deploy
+    cmd: "bash deploy.sh"
+    pane: 3
